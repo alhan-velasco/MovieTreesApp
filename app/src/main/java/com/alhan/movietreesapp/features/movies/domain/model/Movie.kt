@@ -8,13 +8,11 @@ data class Movie(
     val voteCount: Int,
     val releaseDate: String
 ) {
-    /** Clave de ordenamiento/búsqueda: título normalizado (sin mayúsculas ni espacios extremos). */
     val titleKey: String = normalize(title)
 
     companion object {
         fun normalize(title: String): String = title.trim().lowercase()
 
-        /** Orden total: por título y, si hay títulos repetidos (remakes), por id. */
         fun compare(a: Movie, b: Movie): Int {
             val c = a.titleKey.compareTo(b.titleKey)
             return if (c != 0) c else a.id.compareTo(b.id)

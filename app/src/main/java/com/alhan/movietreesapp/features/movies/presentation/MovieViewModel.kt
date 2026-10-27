@@ -41,7 +41,6 @@ class MovieViewModel(
 ) : ViewModel() {
 
     companion object {
-        /** Repeticiones por búsqueda para promediar y reducir el ruido del JIT/GC. */
         const val SEARCH_REPETITIONS = 200
     }
 
@@ -50,15 +49,14 @@ class MovieViewModel(
 
     private val mutex = Mutex()
 
-    /** Películas en el orden original del CSV: así se construye el árbol (orden "aleatorio" por título). */
     private val insertionOrder: MutableList<Movie> = mutableListOf()
 
-    /** Lista lineal ordenada por título (ArrayList). */
-    private val sortedList: MutableList<Movie> = ArrayList()
+    private val sortedList: MutableList<Movie> = mutableListOf()
 
     private var movieTree: MovieTree = MovieTree(TreeMode.ORDERED)
 
-    /** Último título buscado (se repite al cambiar de modo). */
+    private var orderedTree: MovieTree = MovieTree(TreeMode.ORDERED)
+
     private var lastQuery: String? = null
 
     init {
@@ -75,10 +73,14 @@ class MovieViewModel(
                         val loaded = repository.loadMoviesFromCsv().distinctBy { it.id }
                         insertionOrder.addAll(loaded)
                         sortedList.addAll(loaded.sortedWith(Movie.ORDER))
+                        orderedTree = repository.buildTree(insertionOrder, TreeMode.ORDERED)
                     }
-                    movieTree = repository.buildTree(insertionOrder, mode)
+                    movieTree = if (mode == TreeMode.ORDERED || mode == TreeMode.LIST) {
+                        orderedTree
+                    } else {
+                        repository.buildTree(insertionOrder, mode)
+                    }
 
-                    // Al cambiar de modo se limpian los resultados anteriores
                     _uiState.update {
                         it.copy(
                             isLoading = false,
@@ -93,7 +95,6 @@ class MovieViewModel(
                     }
                     refreshStats()
 
-                    // Se repite automáticamente la última búsqueda para comparar escenarios
                     lastQuery?.let { runSearch(it) }
                 } catch (e: Exception) {
                     _uiState.update {
@@ -104,7 +105,6 @@ class MovieViewModel(
         }
     }
 
-    // Contraste de Búsqueda por título: Árbol vs Lista Lineal
     fun searchMovie(title: String) {
         if (title.isBlank()) return
         lastQuery = title
@@ -116,7 +116,6 @@ class MovieViewModel(
     private fun runSearch(title: String) {
         run {
             run {
-                // Calentamiento (JIT) antes de medir
                 movieTree.searchByTitle(title)
                 repository.linearSearch(sortedList, title)
 
@@ -146,7 +145,6 @@ class MovieViewModel(
         }
     }
 
-    // Contraste de Inserción: Árbol (según modo) vs Lista Lineal ordenada
     fun benchmarkInsert(title: String) {
         if (title.isBlank()) return
         viewModelScope.launch(Dispatchers.Default) {
@@ -169,6 +167,9 @@ class MovieViewModel(
                 val treeTime = measureNanoTime {
                     treeSteps = movieTree.insert(newMovie)
                 } / 1_000_000.0
+                if (movieTree !== orderedTree) {
+                    orderedTree.insert(newMovie)
+                }
 
                 var linearSteps = 0
                 val linearTime = measureNanoTime {
@@ -198,7 +199,9 @@ class MovieViewModel(
                 val target = movieTree.searchByTitle(title).first
                 val deleted = movieTree.deleteByTitle(title)
                 if (deleted && target != null) {
-                    // Se elimina exactamente la misma película (mismo id) de la lista
+                    if (movieTree !== orderedTree) {
+                        orderedTree.deleteByTitle(title)
+                    }
                     sortedList.removeAll { it.id == target.id }
                     insertionOrder.removeAll { it.id == target.id }
                 }
@@ -231,4 +234,5 @@ fun modeLabel(mode: TreeMode): String = when (mode) {
     TreeMode.ORDERED -> "Ordenado (BST)"
     TreeMode.STACK -> "Pila (LIFO)"
     TreeMode.QUEUE -> "Cola (FIFO)"
+    TreeMode.LIST -> "Lista Lineal"
 }

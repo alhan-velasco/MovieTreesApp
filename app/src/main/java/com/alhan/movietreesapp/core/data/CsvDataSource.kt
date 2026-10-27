@@ -10,7 +10,6 @@ class CsvDataSource(private val context: Context) {
         val records = parseCsv(text)
         val movieList = ArrayList<Movie>(records.size)
 
-        // Se omite la cabecera (registro 0)
         for (tokens in records.drop(1)) {
             if (tokens.size < 11) continue
             val id = tokens[1].trim().toLongOrNull() ?: continue
@@ -30,10 +29,6 @@ class CsvDataSource(private val context: Context) {
         return movieList
     }
 
-    /**
-     * Parser CSV que respeta comillas: soporta comas, comillas escapadas ("")
-     * y saltos de línea dentro de un campo entrecomillado (sinopsis multilínea).
-     */
     private fun parseCsv(text: String): List<List<String>> {
         val records = ArrayList<List<String>>()
         var fields = ArrayList<String>()
@@ -57,7 +52,7 @@ class CsvDataSource(private val context: Context) {
                 when (ch) {
                     '"' -> insideQuotes = true
                     ',' -> { fields.add(current.toString()); current.clear() }
-                    '\r' -> { /* ignorar */ }
+                    '\r' -> { }
                     '\n' -> {
                         fields.add(current.toString()); current.clear()
                         records.add(fields); fields = ArrayList()

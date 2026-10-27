@@ -26,7 +26,14 @@ import java.util.Locale
 private val TreeColor = Color(0xFF2E7D32)
 private val ListColor = Color(0xFFC62828)
 
-private fun fmt(ms: Double): String = String.format(Locale.US, "%.4f", ms)
+private fun formatTime(ms: Double): String {
+    return when {
+        ms == 0.0 -> "0 ms"
+        ms < 0.001 -> String.format(Locale.US, "%.1f ns", ms * 1_000_000.0)
+        ms < 0.1 -> String.format(Locale.US, "%.2f µs", ms * 1_000.0)
+        else -> String.format(Locale.US, "%.4f ms", ms)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,10 +44,10 @@ fun MovieScreen(viewModel: MovieViewModel) {
     var searchText by remember { mutableStateOf("UNABOMBER") }
     var newTitleText by remember { mutableStateOf("Película de Prueba") }
 
-    val isOrdered = state.currentMode == TreeMode.ORDERED
+    val isOrdered = state.currentMode == TreeMode.ORDERED || state.currentMode == TreeMode.LIST
     val treeSearchBigO = if (isOrdered) "O(log N)" else "O(N) degenerado"
     val treeInsertBigO = when (state.currentMode) {
-        TreeMode.ORDERED -> "O(log N)"
+        TreeMode.ORDERED, TreeMode.LIST -> "O(log N)"
         TreeMode.STACK -> "O(1) en raíz"
         TreeMode.QUEUE -> "O(N) al final"
     }
@@ -51,7 +58,6 @@ fun MovieScreen(viewModel: MovieViewModel) {
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
     ) {
-        // ENCABEZADO
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -64,7 +70,7 @@ fun MovieScreen(viewModel: MovieViewModel) {
         ) {
             Column {
                 Text(
-                    text = "🎬 MovieTrees",
+                    text = "MovieTrees",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -97,33 +103,32 @@ fun MovieScreen(viewModel: MovieViewModel) {
                 )
             }
 
-            // SELECTOR DE ESCENARIO
-            SectionCard(title = "🌳 Escenario del árbol") {
-                val modes = listOf(TreeMode.ORDERED, TreeMode.STACK, TreeMode.QUEUE)
-                val labels = listOf("Ordenado", "Pila", "Cola")
+            SectionCard(title = "Escenario de comparación") {
+                val modes = listOf(TreeMode.ORDERED, TreeMode.STACK, TreeMode.QUEUE, TreeMode.LIST)
+                val labels = listOf("Ordenado", "Pila", "Cola", "Lista")
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                     modes.forEachIndexed { index, mode ->
                         SegmentedButton(
                             selected = state.currentMode == mode,
                             onClick = { if (!state.isLoading) viewModel.loadDataset(mode) },
                             shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size)
-                        ) { Text(labels[index]) }
+                        ) { Text(labels[index], maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = when (state.currentMode) {
-                        TreeMode.ORDERED -> "BST: cada nodo va a la izquierda o derecha según el título. La búsqueda descarta la mitad en cada paso."
-                        TreeMode.STACK -> "Pila (LIFO): cada película se vuelve la nueva raíz. El árbol queda como una cadena (degenerado)."
-                        TreeMode.QUEUE -> "Cola (FIFO): cada película se agrega al final de la rama derecha. El árbol queda como una cadena (degenerado)."
+                        TreeMode.ORDERED -> "BST: cada nodo va a la izquierda o derecha según el título. Búsqueda O(log N)."
+                        TreeMode.STACK -> "Pila (LIFO): cada película se vuelve la nueva raíz. Árbol degenerado O(N)."
+                        TreeMode.QUEUE -> "Cola (FIFO): cada película se agrega al final derecho. Árbol degenerado O(N)."
+                        TreeMode.LIST -> "Lista Lineal (mutableListOf): recorrido secuencial puro elemento por elemento O(N)."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            // BÚSQUEDA
-            SectionCard(title = "🔍 Búsqueda por título") {
+            SectionCard(title = "Búsqueda por título") {
                 OutlinedTextField(
                     value = searchText,
                     onValueChange = { searchText = it },
@@ -152,21 +157,39 @@ fun MovieScreen(viewModel: MovieViewModel) {
                 if (state.treeSearchSteps > 0 || state.linearSearchSteps > 0) {
                     Spacer(Modifier.height(16.dp))
                     val maxSteps = maxOf(state.treeSearchSteps, state.linearSearchSteps, 1)
-                    ComparisonBar(
-                        label = "Árbol · $treeSearchBigO",
-                        steps = state.treeSearchSteps,
-                        timeMs = state.treeSearchTimeMs,
-                        fraction = state.treeSearchSteps.toFloat() / maxSteps,
-                        color = TreeColor
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    ComparisonBar(
-                        label = "Lista · O(N)",
-                        steps = state.linearSearchSteps,
-                        timeMs = state.linearSearchTimeMs,
-                        fraction = state.linearSearchSteps.toFloat() / maxSteps,
-                        color = ListColor
-                    )
+                    if (state.currentMode == TreeMode.LIST) {
+                        ComparisonBar(
+                            label = "Lista Lineal (mutableListOf) · O(N)",
+                            steps = state.linearSearchSteps,
+                            timeMs = state.linearSearchTimeMs,
+                            fraction = state.linearSearchSteps.toFloat() / maxSteps,
+                            color = ListColor
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        ComparisonBar(
+                            label = "Árbol BST · $treeSearchBigO",
+                            steps = state.treeSearchSteps,
+                            timeMs = state.treeSearchTimeMs,
+                            fraction = state.treeSearchSteps.toFloat() / maxSteps,
+                            color = TreeColor
+                        )
+                    } else {
+                        ComparisonBar(
+                            label = "Árbol · $treeSearchBigO",
+                            steps = state.treeSearchSteps,
+                            timeMs = state.treeSearchTimeMs,
+                            fraction = state.treeSearchSteps.toFloat() / maxSteps,
+                            color = TreeColor
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        ComparisonBar(
+                            label = "Lista · O(N)",
+                            steps = state.linearSearchSteps,
+                            timeMs = state.linearSearchTimeMs,
+                            fraction = state.linearSearchSteps.toFloat() / maxSteps,
+                            color = ListColor
+                        )
+                    }
                     if (state.treeSearchSteps > 0 && state.linearSearchSteps > 0) {
                         Spacer(Modifier.height(10.dp))
                         val ratio = state.linearSearchSteps.toDouble() / state.treeSearchSteps
@@ -180,7 +203,6 @@ fun MovieScreen(viewModel: MovieViewModel) {
                 }
             }
 
-            // PELÍCULA ENCONTRADA
             AnimatedVisibility(visible = state.searchResult != null) {
                 state.searchResult?.let { movie ->
                     ElevatedCard(
@@ -195,7 +217,14 @@ fun MovieScreen(viewModel: MovieViewModel) {
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(MaterialTheme.colorScheme.primary),
                                 contentAlignment = Alignment.Center
-                            ) { Text("🎞️", style = MaterialTheme.typography.headlineSmall) }
+                            ) {
+                                Text(
+                                    text = movie.title.take(1).uppercase(),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
                             Spacer(Modifier.width(14.dp))
                             Column {
                                 Text(
@@ -205,7 +234,7 @@ fun MovieScreen(viewModel: MovieViewModel) {
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                Text("📅 ${movie.releaseDate}   ⭐ ${movie.voteAverage} (${movie.voteCount})")
+                                Text("Estreno: ${movie.releaseDate}   Calificación: ${movie.voteAverage} (${movie.voteCount})")
                                 Text(
                                     "ID ${movie.id} · Popularidad ${movie.popularity}",
                                     style = MaterialTheme.typography.bodySmall
@@ -216,8 +245,7 @@ fun MovieScreen(viewModel: MovieViewModel) {
                 }
             }
 
-            // INSERCIÓN
-            SectionCard(title = "➕ Inserción dinámica") {
+            SectionCard(title = "Inserción dinámica") {
                 OutlinedTextField(
                     value = newTitleText,
                     onValueChange = { newTitleText = it },
@@ -236,21 +264,39 @@ fun MovieScreen(viewModel: MovieViewModel) {
                 if (state.treeInsertTimeMs > 0.0 || state.linearInsertTimeMs > 0.0) {
                     Spacer(Modifier.height(16.dp))
                     val maxSteps = maxOf(state.treeInsertSteps, state.linearInsertSteps, 1)
-                    ComparisonBar(
-                        label = "Árbol · $treeInsertBigO",
-                        steps = state.treeInsertSteps,
-                        timeMs = state.treeInsertTimeMs,
-                        fraction = state.treeInsertSteps.toFloat() / maxSteps,
-                        color = TreeColor
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    ComparisonBar(
-                        label = "Lista ordenada · O(N) + desplazamiento",
-                        steps = state.linearInsertSteps,
-                        timeMs = state.linearInsertTimeMs,
-                        fraction = state.linearInsertSteps.toFloat() / maxSteps,
-                        color = ListColor
-                    )
+                    if (state.currentMode == TreeMode.LIST) {
+                        ComparisonBar(
+                            label = "Lista ordenada (mutableListOf) · O(N) + desplazamiento",
+                            steps = state.linearInsertSteps,
+                            timeMs = state.linearInsertTimeMs,
+                            fraction = state.linearInsertSteps.toFloat() / maxSteps,
+                            color = ListColor
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        ComparisonBar(
+                            label = "Árbol BST · $treeInsertBigO",
+                            steps = state.treeInsertSteps,
+                            timeMs = state.treeInsertTimeMs,
+                            fraction = state.treeInsertSteps.toFloat() / maxSteps,
+                            color = TreeColor
+                        )
+                    } else {
+                        ComparisonBar(
+                            label = "Árbol · $treeInsertBigO",
+                            steps = state.treeInsertSteps,
+                            timeMs = state.treeInsertTimeMs,
+                            fraction = state.treeInsertSteps.toFloat() / maxSteps,
+                            color = TreeColor
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        ComparisonBar(
+                            label = "Lista ordenada · O(N) + desplazamiento",
+                            steps = state.linearInsertSteps,
+                            timeMs = state.linearInsertTimeMs,
+                            fraction = state.linearInsertSteps.toFloat() / maxSteps,
+                            color = ListColor
+                        )
+                    }
                 }
             }
 
@@ -294,7 +340,7 @@ private fun ComparisonBar(label: String, steps: Int, timeMs: Double, fraction: F
     Column {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, fontWeight = FontWeight.SemiBold, color = color, style = MaterialTheme.typography.bodyMedium)
-            Text("${fmt(timeMs)} ms", style = MaterialTheme.typography.bodySmall)
+            Text(formatTime(timeMs), style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.height(4.dp))
         Box(

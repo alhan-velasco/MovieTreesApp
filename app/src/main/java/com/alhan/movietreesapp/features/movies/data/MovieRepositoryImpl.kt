@@ -20,7 +20,6 @@ class MovieRepositoryImpl(
         return tree
     }
 
-    // Búsqueda secuencial en lista: recorre elemento por elemento -> O(N)
     override fun linearSearch(movies: List<Movie>, title: String): Pair<Movie?, Int> {
         val key = Movie.normalize(title)
         var steps = 0
@@ -31,7 +30,6 @@ class MovieRepositoryImpl(
         return Pair(null, steps)
     }
 
-    // Inserción ordenada (por título) en lista: buscar posición O(N) + desplazar memoria O(N)
     override fun linearInsertOrdered(movies: MutableList<Movie>, movie: Movie): Int {
         var steps = 0
         var insertIndex = movies.size
@@ -42,7 +40,7 @@ class MovieRepositoryImpl(
                 break
             }
         }
-        movies.add(insertIndex, movie) // System.arraycopy de los elementos posteriores
+        movies.add(insertIndex, movie)
         return steps
     }
 

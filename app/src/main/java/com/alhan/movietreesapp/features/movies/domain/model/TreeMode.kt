@@ -3,5 +3,6 @@ package com.alhan.movietreesapp.features.movies.domain.model
 enum class TreeMode {
     ORDERED,
     STACK,
-    QUEUE
+    QUEUE,
+    LIST
 }
