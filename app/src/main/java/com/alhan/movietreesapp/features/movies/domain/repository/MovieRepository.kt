@@ -8,6 +8,6 @@ interface MovieRepository {
     fun loadMoviesFromCsv(): List<Movie>
     fun buildTree(movies: List<Movie>, mode: TreeMode): MovieTree
     fun linearSearch(movies: List<Movie>, title: String): Pair<Movie?, Int>
-    fun linearInsertOrdered(movies: MutableList<Movie>, movie: Movie): Int
-    fun linearDelete(movies: MutableList<Movie>, title: String): Boolean
+    fun linearInsert(movies: MutableList<Movie>, movie: Movie): Int
+    fun linearDelete(movies: MutableList<Movie>, title: String): Pair<Boolean, Int>
 }

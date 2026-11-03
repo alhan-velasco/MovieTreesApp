@@ -16,39 +16,44 @@ class MovieRepositoryImpl(
 
     override fun buildTree(movies: List<Movie>, mode: TreeMode): MovieTree {
         val tree = MovieTree(mode)
-        movies.forEach { tree.insert(it) }
+        for (movie in movies) {
+            tree.insert(movie)
+        }
         return tree
     }
 
     override fun linearSearch(movies: List<Movie>, title: String): Pair<Movie?, Int> {
         val key = Movie.normalize(title)
         var steps = 0
-        for (movie in movies) {
+        for (i in 0 until movies.size) {
             steps++
-            if (movie.titleKey == key) return Pair(movie, steps)
+            val movie = movies[i]
+            if (movie.titleKey.equals(key)) {
+                return Pair(movie, steps)
+            }
         }
         return Pair(null, steps)
     }
 
-    override fun linearInsertOrdered(movies: MutableList<Movie>, movie: Movie): Int {
+    override fun linearInsert(movies: MutableList<Movie>, movie: Movie): Int {
         var steps = 0
-        var insertIndex = movies.size
-        for (i in movies.indices) {
+        for (i in 0 until movies.size) {
             steps++
-            if (Movie.compare(movie, movies[i]) < 0) {
-                insertIndex = i
-                break
-            }
         }
-        movies.add(insertIndex, movie)
-        return steps
+        movies.add(movie)
+        return steps + 1
     }
 
-    override fun linearDelete(movies: MutableList<Movie>, title: String): Boolean {
+    override fun linearDelete(movies: MutableList<Movie>, title: String): Pair<Boolean, Int> {
         val key = Movie.normalize(title)
-        val index = movies.indexOfFirst { it.titleKey == key }
-        if (index < 0) return false
-        movies.removeAt(index)
-        return true
+        var steps = 0
+        for (i in 0 until movies.size) {
+            steps++
+            if (movies[i].titleKey.equals(key)) {
+                movies.removeAt(i)
+                return Pair(true, steps)
+            }
+        }
+        return Pair(false, steps)
     }
 }

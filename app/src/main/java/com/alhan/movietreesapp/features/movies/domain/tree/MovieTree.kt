@@ -27,8 +27,7 @@ class MovieTree(val mode: TreeMode) {
         var steps = 0
         while (true) {
             steps++
-            val c = Movie.compare(movie, current!!.movie)
-            if (c == 0) return -1
+            val c = movie.titleKey.compareTo(current!!.movie.titleKey)
             if (c < 0) {
                 if (current.left == null) { current.left = newNode; break }
                 current = current.left
@@ -68,7 +67,11 @@ class MovieTree(val mode: TreeMode) {
 
     fun searchByTitle(title: String): Pair<Movie?, Int> {
         val key = Movie.normalize(title)
-        return if (mode == TreeMode.ORDERED) searchOrdered(key) else searchFullTraversal(key)
+        return if (mode == TreeMode.ORDERED || mode == TreeMode.LIST) {
+            searchOrdered(key)
+        } else {
+            searchFullTraversal(key)
+        }
     }
 
     private fun searchOrdered(key: String): Pair<Movie?, Int> {
@@ -90,7 +93,7 @@ class MovieTree(val mode: TreeMode) {
         while (stack.isNotEmpty()) {
             val node = stack.removeLast()
             steps++
-            if (node.movie.titleKey == key) return Pair(node.movie, steps)
+            if (node.movie.titleKey.equals(key)) return Pair(node.movie, steps)
             node.right?.let { stack.addLast(it) }
             node.left?.let { stack.addLast(it) }
         }
@@ -98,27 +101,29 @@ class MovieTree(val mode: TreeMode) {
     }
 
     fun deleteByTitle(title: String): Boolean {
-        val target = searchByTitle(title).first ?: return false
-        return if (mode == TreeMode.ORDERED) {
-            root = deleteRec(root, target)
-            nodeCount--
-            true
+        val key = Movie.normalize(title)
+        return if (mode == TreeMode.ORDERED || mode == TreeMode.LIST) {
+            val before = nodeCount
+            root = deleteRec(root, key)
+            nodeCount < before
         } else {
-            deleteUnordered(target)
+            deleteUnordered(key)
         }
     }
 
-    private fun deleteRec(current: MovieNode?, target: Movie): MovieNode? {
+    private fun deleteRec(current: MovieNode?, key: String): MovieNode? {
         if (current == null) return null
-        val c = Movie.compare(target, current.movie)
+        val c = key.compareTo(current.movie.titleKey)
         when {
-            c < 0 -> current.left = deleteRec(current.left, target)
-            c > 0 -> current.right = deleteRec(current.right, target)
+            c < 0 -> current.left = deleteRec(current.left, key)
+            c > 0 -> current.right = deleteRec(current.right, key)
             else -> {
+                nodeCount--
                 if (current.left == null) return current.right
                 if (current.right == null) return current.left
                 val minNode = findMin(current.right!!)
-                return MovieNode(minNode.movie, current.left, deleteRec(current.right, minNode.movie))
+                val rightSubtree = removeMin(current.right!!)
+                return MovieNode(minNode.movie, current.left, rightSubtree)
             }
         }
         return current
@@ -130,14 +135,20 @@ class MovieTree(val mode: TreeMode) {
         return current
     }
 
-    private fun deleteUnordered(target: Movie): Boolean {
+    private fun removeMin(node: MovieNode): MovieNode? {
+        if (node.left == null) return node.right
+        node.left = removeMin(node.left!!)
+        return node
+    }
+
+    private fun deleteUnordered(key: String): Boolean {
         var parent: MovieNode? = null
         var found: MovieNode? = null
         val stack = ArrayDeque<Pair<MovieNode, MovieNode?>>()
         root?.let { stack.addLast(Pair(it, null)) }
         while (stack.isNotEmpty()) {
             val (node, p) = stack.removeLast()
-            if (node.movie == target) { found = node; parent = p; break }
+            if (node.movie.titleKey.equals(key)) { found = node; parent = p; break }
             node.right?.let { stack.addLast(Pair(it, node)) }
             node.left?.let { stack.addLast(Pair(it, node)) }
         }

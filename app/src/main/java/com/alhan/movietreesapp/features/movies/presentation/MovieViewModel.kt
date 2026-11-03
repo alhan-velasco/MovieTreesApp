@@ -24,6 +24,7 @@ data class MovieUiState(
     val currentMode: TreeMode = TreeMode.ORDERED,
     val treeHeight: Int = 0,
     val theoreticalLog2N: Double = 0.0,
+    val loadTimeMs: Double = 0.0,
     val searchResult: Movie? = null,
     val treeSearchSteps: Int = 0,
     val treeSearchTimeMs: Double = 0.0,
@@ -40,22 +41,14 @@ class MovieViewModel(
     private val repository: MovieRepository
 ) : ViewModel() {
 
-    companion object {
-        const val SEARCH_REPETITIONS = 200
-    }
-
     private val _uiState = MutableStateFlow(MovieUiState())
     val uiState: StateFlow<MovieUiState> = _uiState.asStateFlow()
 
     private val mutex = Mutex()
 
-    private val insertionOrder: MutableList<Movie> = mutableListOf()
-
-    private val sortedList: MutableList<Movie> = mutableListOf()
+    private val rawList: MutableList<Movie> = mutableListOf()
 
     private var movieTree: MovieTree = MovieTree(TreeMode.ORDERED)
-
-    private var orderedTree: MovieTree = MovieTree(TreeMode.ORDERED)
 
     private var lastQuery: String? = null
 
@@ -66,31 +59,28 @@ class MovieViewModel(
     fun loadDataset(mode: TreeMode) {
         viewModelScope.launch(Dispatchers.Default) {
             mutex.withLock {
-                _uiState.update { it.copy(isLoading = true, operationMessage = "Cargando películas en memoria RAM...") }
+                _uiState.update { it.copy(isLoading = true, operationMessage = "Cargando CSV en memoria RAM...") }
 
                 try {
-                    if (insertionOrder.isEmpty()) {
-                        val loaded = repository.loadMoviesFromCsv().distinctBy { it.id }
-                        insertionOrder.addAll(loaded)
-                        sortedList.addAll(loaded.sortedWith(Movie.ORDER))
-                        orderedTree = repository.buildTree(insertionOrder, TreeMode.ORDERED)
-                    }
-                    movieTree = if (mode == TreeMode.ORDERED || mode == TreeMode.LIST) {
-                        orderedTree
-                    } else {
-                        repository.buildTree(insertionOrder, mode)
-                    }
+                    val loadTime = measureNanoTime {
+                        val loadedFromCsv = repository.loadMoviesFromCsv()
+                        rawList.clear()
+                        rawList.addAll(loadedFromCsv)
+                        val treeModeToBuild = if (mode == TreeMode.LIST) TreeMode.ORDERED else mode
+                        movieTree = repository.buildTree(rawList, treeModeToBuild)
+                    } / 1_000_000.0
 
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             currentMode = mode,
+                            loadTimeMs = loadTime,
                             searchResult = null,
                             treeSearchSteps = 0, treeSearchTimeMs = 0.0,
                             linearSearchSteps = 0, linearSearchTimeMs = 0.0,
                             treeInsertSteps = 0, treeInsertTimeMs = 0.0,
                             linearInsertSteps = 0, linearInsertTimeMs = 0.0,
-                            operationMessage = "Estructuras listas: ${movieTree.nodeCount} películas (Modo ${modeLabel(mode)})"
+                            operationMessage = "CSV cargado en RAM: ${rawList.size} registros en bruto (Modo ${modeLabel(mode)})"
                         )
                     }
                     refreshStats()
@@ -114,34 +104,35 @@ class MovieViewModel(
     }
 
     private fun runSearch(title: String) {
-        run {
-            run {
-                movieTree.searchByTitle(title)
-                repository.linearSearch(sortedList, title)
+        var treeResult: Movie? = null
+        var treeSteps = 0
+        val treeTime = measureNanoTime {
+            val res = movieTree.searchByTitle(title)
+            treeResult = res.first
+            treeSteps = res.second
+        } / 1_000_000.0
 
-                val (treeResult, treeSteps) = movieTree.searchByTitle(title)
-                val treeTime = measureNanoTime {
-                    repeat(SEARCH_REPETITIONS) { movieTree.searchByTitle(title) }
-                } / 1_000_000.0 / SEARCH_REPETITIONS
+        var linearResult: Movie? = null
+        var linearSteps = 0
+        val linearTime = measureNanoTime {
+            val res = repository.linearSearch(rawList, title)
+            linearResult = res.first
+            linearSteps = res.second
+        } / 1_000_000.0
 
-                val (_, linearSteps) = repository.linearSearch(sortedList, title)
-                val linearTime = measureNanoTime {
-                    repeat(SEARCH_REPETITIONS) { repository.linearSearch(sortedList, title) }
-                } / 1_000_000.0 / SEARCH_REPETITIONS
+        val foundMovie = treeResult ?: linearResult
 
-                _uiState.update {
-                    it.copy(
-                        searchResult = treeResult,
-                        treeSearchSteps = treeSteps,
-                        treeSearchTimeMs = treeTime,
-                        linearSearchSteps = linearSteps,
-                        linearSearchTimeMs = linearTime,
-                        operationMessage = if (treeResult != null)
-                            "Película encontrada en ambas estructuras (promedio de $SEARCH_REPETITIONS búsquedas)."
-                        else "Película \"$title\" no encontrada."
-                    )
-                }
-            }
+        _uiState.update {
+            it.copy(
+                searchResult = foundMovie,
+                treeSearchSteps = treeSteps,
+                treeSearchTimeMs = treeTime,
+                linearSearchSteps = linearSteps,
+                linearSearchTimeMs = linearTime,
+                operationMessage = if (foundMovie != null)
+                    "Película encontrada en ambas estructuras."
+                else "Película \"$title\" no encontrada."
+            )
         }
     }
 
@@ -149,34 +140,34 @@ class MovieViewModel(
         if (title.isBlank()) return
         viewModelScope.launch(Dispatchers.Default) {
             mutex.withLock {
-                if (repository.linearSearch(sortedList, title).first != null) {
+                if (repository.linearSearch(rawList, title).first != null) {
                     _uiState.update { it.copy(operationMessage = "Ya existe una película titulada \"$title\". No se insertó.") }
                     return@withLock
                 }
 
+                var maxId = 0L
+                for (m in rawList) {
+                    if (m.id > maxId) maxId = m.id
+                }
+
                 val newMovie = Movie(
-                    id = (insertionOrder.maxOfOrNull { it.id } ?: 0L) + 1,
+                    id = maxId + 1,
                     title = title.trim(),
                     popularity = 50.0,
                     voteAverage = 8.0,
                     voteCount = 100,
-                    releaseDate = "2026-10-19"
+                    releaseDate = "2026-11-03"
                 )
 
                 var treeSteps = 0
                 val treeTime = measureNanoTime {
                     treeSteps = movieTree.insert(newMovie)
                 } / 1_000_000.0
-                if (movieTree !== orderedTree) {
-                    orderedTree.insert(newMovie)
-                }
 
                 var linearSteps = 0
                 val linearTime = measureNanoTime {
-                    linearSteps = repository.linearInsertOrdered(sortedList, newMovie)
+                    linearSteps = repository.linearInsert(rawList, newMovie)
                 } / 1_000_000.0
-
-                insertionOrder.add(newMovie)
 
                 _uiState.update {
                     it.copy(
@@ -196,15 +187,9 @@ class MovieViewModel(
         if (title.isBlank()) return
         viewModelScope.launch(Dispatchers.Default) {
             mutex.withLock {
-                val target = movieTree.searchByTitle(title).first
-                val deleted = movieTree.deleteByTitle(title)
-                if (deleted && target != null) {
-                    if (movieTree !== orderedTree) {
-                        orderedTree.deleteByTitle(title)
-                    }
-                    sortedList.removeAll { it.id == target.id }
-                    insertionOrder.removeAll { it.id == target.id }
-                }
+                val deletedFromTree = movieTree.deleteByTitle(title)
+                val (deletedFromList, _) = repository.linearDelete(rawList, title)
+                val deleted = deletedFromTree || deletedFromList
                 _uiState.update {
                     it.copy(
                         searchResult = if (deleted) null else it.searchResult,
@@ -222,7 +207,7 @@ class MovieViewModel(
         _uiState.update {
             it.copy(
                 totalLoaded = n,
-                listSize = sortedList.size,
+                listSize = rawList.size,
                 treeHeight = movieTree.height(),
                 theoreticalLog2N = if (n > 0) ln(n.toDouble()) / ln(2.0) else 0.0
             )
@@ -234,5 +219,5 @@ fun modeLabel(mode: TreeMode): String = when (mode) {
     TreeMode.ORDERED -> "Ordenado (BST)"
     TreeMode.STACK -> "Pila (LIFO)"
     TreeMode.QUEUE -> "Cola (FIFO)"
-    TreeMode.LIST -> "Lista Lineal"
+    TreeMode.LIST -> "Lista en Bruto"
 }

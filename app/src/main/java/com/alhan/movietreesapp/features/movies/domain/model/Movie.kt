@@ -12,12 +12,5 @@ data class Movie(
 
     companion object {
         fun normalize(title: String): String = title.trim().lowercase()
-
-        fun compare(a: Movie, b: Movie): Int {
-            val c = a.titleKey.compareTo(b.titleKey)
-            return if (c != 0) c else a.id.compareTo(b.id)
-        }
-
-        val ORDER: Comparator<Movie> = Comparator { a, b -> compare(a, b) }
     }
 }

@@ -76,13 +76,13 @@ fun MovieScreen(viewModel: MovieViewModel) {
                     color = Color.White
                 )
                 Text(
-                    text = "Árbol Binario vs Lista Lineal",
+                    text = "Árbol Binario vs Lista en Bruto (CSV)",
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White.copy(alpha = 0.9f)
                 )
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatPill("Películas", "${state.totalLoaded}", Modifier.weight(1f))
+                    StatPill("Películas", "${state.listSize}", Modifier.weight(1f))
                     StatPill("Altura", "${state.treeHeight}", Modifier.weight(1f))
                     StatPill("log₂ N", String.format(Locale.US, "%.1f", state.theoreticalLog2N), Modifier.weight(1f))
                 }
@@ -103,7 +103,7 @@ fun MovieScreen(viewModel: MovieViewModel) {
                 )
             }
 
-            SectionCard(title = "Escenario de comparación") {
+            SectionCard(title = "Escenario de comparación (Repository -> RAM)") {
                 val modes = listOf(TreeMode.ORDERED, TreeMode.STACK, TreeMode.QUEUE, TreeMode.LIST)
                 val labels = listOf("Ordenado", "Pila", "Cola", "Lista")
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -118,14 +118,22 @@ fun MovieScreen(viewModel: MovieViewModel) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = when (state.currentMode) {
-                        TreeMode.ORDERED -> "BST: cada nodo va a la izquierda o derecha según el título. Búsqueda O(log N)."
-                        TreeMode.STACK -> "Pila (LIFO): cada película se vuelve la nueva raíz. Árbol degenerado O(N)."
-                        TreeMode.QUEUE -> "Cola (FIFO): cada película se agrega al final derecho. Árbol degenerado O(N)."
-                        TreeMode.LIST -> "Lista Lineal (mutableListOf): recorrido secuencial puro elemento por elemento O(N)."
+                        TreeMode.ORDERED -> "Árbol BST: se ordena solo al insertar con String.compareTo() (izquierda < nodo <= derecha). Búsqueda O(log N)."
+                        TreeMode.STACK -> "Árbol Modo Pila (LIFO): cada película se inserta en la raíz en O(1). Recorrido DFS con String.equals() O(N)."
+                        TreeMode.QUEUE -> "Árbol Modo Cola (FIFO): cada película se inserta al final derecho en O(N). Recorrido DFS con String.equals() O(N)."
+                        TreeMode.LIST -> "Lista en Bruto (mutableListOf sin ordenar): tal cual llega del CSV. Búsqueda secuencial con for + String.equals() O(N)."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (state.loadTimeMs > 0.0) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Tiempo de carga desde CSV a RAM: ${formatTime(state.loadTimeMs)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             SectionCard(title = "Búsqueda por título") {
@@ -159,7 +167,7 @@ fun MovieScreen(viewModel: MovieViewModel) {
                     val maxSteps = maxOf(state.treeSearchSteps, state.linearSearchSteps, 1)
                     if (state.currentMode == TreeMode.LIST) {
                         ComparisonBar(
-                            label = "Lista Lineal (mutableListOf) · O(N)",
+                            label = "Lista en Bruto (for + equals) · O(N)",
                             steps = state.linearSearchSteps,
                             timeMs = state.linearSearchTimeMs,
                             fraction = state.linearSearchSteps.toFloat() / maxSteps,
@@ -167,7 +175,7 @@ fun MovieScreen(viewModel: MovieViewModel) {
                         )
                         Spacer(Modifier.height(12.dp))
                         ComparisonBar(
-                            label = "Árbol BST · $treeSearchBigO",
+                            label = "Árbol BST (compareTo) · $treeSearchBigO",
                             steps = state.treeSearchSteps,
                             timeMs = state.treeSearchTimeMs,
                             fraction = state.treeSearchSteps.toFloat() / maxSteps,
@@ -178,12 +186,12 @@ fun MovieScreen(viewModel: MovieViewModel) {
                             label = "Árbol · $treeSearchBigO",
                             steps = state.treeSearchSteps,
                             timeMs = state.treeSearchTimeMs,
-                            fraction = state.treeSearchSteps.toFloat() / maxSteps,
+                            fraction = state.treeSearchTimeMs.let { state.treeSearchSteps.toFloat() / maxSteps },
                             color = TreeColor
                         )
                         Spacer(Modifier.height(12.dp))
                         ComparisonBar(
-                            label = "Lista · O(N)",
+                            label = "Lista en Bruto · O(N)",
                             steps = state.linearSearchSteps,
                             timeMs = state.linearSearchTimeMs,
                             fraction = state.linearSearchSteps.toFloat() / maxSteps,
@@ -266,7 +274,7 @@ fun MovieScreen(viewModel: MovieViewModel) {
                     val maxSteps = maxOf(state.treeInsertSteps, state.linearInsertSteps, 1)
                     if (state.currentMode == TreeMode.LIST) {
                         ComparisonBar(
-                            label = "Lista ordenada (mutableListOf) · O(N) + desplazamiento",
+                            label = "Lista en Bruto (mutableListOf) · O(N)",
                             steps = state.linearInsertSteps,
                             timeMs = state.linearInsertTimeMs,
                             fraction = state.linearInsertSteps.toFloat() / maxSteps,
@@ -290,7 +298,7 @@ fun MovieScreen(viewModel: MovieViewModel) {
                         )
                         Spacer(Modifier.height(12.dp))
                         ComparisonBar(
-                            label = "Lista ordenada · O(N) + desplazamiento",
+                            label = "Lista en Bruto · O(N)",
                             steps = state.linearInsertSteps,
                             timeMs = state.linearInsertTimeMs,
                             fraction = state.linearInsertSteps.toFloat() / maxSteps,
